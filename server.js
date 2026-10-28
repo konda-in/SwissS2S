@@ -1,4 +1,4 @@
-// SwissS2S: Swiss Ephemeris over HTTP. Copyright (C) 2026 Konda Academy. Licensed under AGPL-3.0-only (see LICENSE).
+// SwissS2S: Swiss Ephemeris over HTTP. Licensed under AGPL-3.0-only (see LICENSE).
 // Uses the Swiss Ephemeris (Astrodienst AG, AGPL), through the `sweph` Node binding.
 // Deliberately thin: positions and the ascendant only. No astrology interpretation lives here.
 const path = require('path');
@@ -8,7 +8,13 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const sweph = require('sweph');
 
-const SOURCE_URL = 'https://github.com/konda-in/SwissS2S';
+// Where users of this running service can get its source (AGPL section 13). Set it to the repository you deploy from.
+const SOURCE_URL = process.env.SOURCE_URL || '';
+// Access control, all by environment variable:
+//   SWISS_API_KEY  required in production; callers send it as X-API-Key
+//   ALLOWED_IPS    optional, comma separated client IPs allowed to call /v1/* (empty = any)
+//   TRUST_PROXY    set to the number of reverse proxies in front (e.g. 1) so ALLOWED_IPS sees the real client address
+const ALLOWED_IPS = (process.env.ALLOWED_IPS || '').split(',').map((v) => v.trim()).filter(Boolean);
 const PORT = process.env.PORT || 5100;
 const API_KEY = process.env.SWISS_API_KEY || '';
 const MAX_JDS = Number(process.env.MAX_JDS || 400);
@@ -17,6 +23,7 @@ if (process.env.NODE_ENV === 'production' && !API_KEY) {
   console.error('SWISS_API_KEY is required in production');
   process.exit(1);
 }
+if (process.env.NODE_ENV === 'production' && !SOURCE_URL) console.warn(JSON.stringify({ level: 'warn', msg: 'SOURCE_URL is not set: set it to your source repository to meet AGPL section 13' }));
 
 const C = sweph.constants;
 sweph.set_ephe_path(path.join(__dirname, 'ephe')); // data files 1800-2399; the built-in Moshier model is the fallback
@@ -30,18 +37,20 @@ const BODIES = {
 
 const app = express();
 app.disable('x-powered-by');
+if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use(helmet());
 app.use(express.json({ limit: '64kb' }));
 
 // AGPL section 13: tell every user of the service where the corresponding source is.
-app.use((req, res, next) => { res.set('X-Source-Code', SOURCE_URL); next(); });
-app.get('/', (req, res) => res.json({ service: 'SwissS2S', license: 'AGPL-3.0-only', source: SOURCE_URL }));
-app.get('/source', (req, res) => res.redirect(302, SOURCE_URL));
+app.use((req, res, next) => { if (SOURCE_URL) res.set('X-Source-Code', SOURCE_URL); next(); });
+app.get('/', (req, res) => res.json({ service: 'SwissS2S', license: 'AGPL-3.0-only', ...(SOURCE_URL ? { source: SOURCE_URL } : {}) }));
+app.get('/source', (req, res) => (SOURCE_URL ? res.redirect(302, SOURCE_URL) : res.status(404).json({ error: 'SOURCE_URL is not configured' })));
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use(rateLimit({ windowMs: 60_000, limit: Number(process.env.RATE_LIMIT || 600), standardHeaders: true, legacyHeaders: false }));
 
 app.use((req, res, next) => {
+  if (ALLOWED_IPS.length && !ALLOWED_IPS.includes(req.ip) && !ALLOWED_IPS.includes(String(req.ip).replace(/^::ffff:/, ''))) return res.status(403).json({ error: 'forbidden' });
   if (!API_KEY) return next(); // open only when no key is configured (local development)
   const got = Buffer.from(String(req.get('x-api-key') || ''));
   const want = Buffer.from(API_KEY);

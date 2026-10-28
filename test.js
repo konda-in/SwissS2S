@@ -13,6 +13,7 @@ const srv = app.listen(0, async () => {
     const [s3] = await post('/v1/positions', { jd: 'x' }); assert.equal(s3, 400);
     const [s4] = await post('/v1/positions', { jd: 1, bodies: ['pluto'] }); assert.equal(s4, 400);
     const [s5, b] = await post('/v1/positions', { jds: [2448026.0, 2448027.0], bodies: ['sun'] }); assert.equal(s5, 200); assert.equal(b.results.length, 2);
+    const r = await fetch(base + '/'); assert.equal(r.status, 200); assert.equal((await r.json()).service, 'SwissS2S');
     console.log('all tests passed');
   } catch (e) { console.error(e); process.exitCode = 1; } finally { srv.close(); }
 });
