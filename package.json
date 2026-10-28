@@ -1,0 +1,15 @@
+{
+  "name": "swisss2s",
+  "version": "1.0.0",
+  "description": "SwissS2S: a small HTTP service around the Swiss Ephemeris (sweph). Returns planet positions and the ascendant as JSON.",
+  "license": "AGPL-3.0-only",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.6.1",
+    "helmet": "^8.3.0",
+    "sweph": "^2.10.3-7"
+  }
+}
